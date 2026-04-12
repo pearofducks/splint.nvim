@@ -1,4 +1,4 @@
-*splint.txt*                                     An asynchronous linter plugin
+*splint.txt*                        Async linter plugin for Neovim 0.12+
 
 ==============================================================================
 Table of Contents                                                  *splint.toc*
@@ -70,11 +70,11 @@ M.disable()                                                 *splint.disable*
 :checkhealth splint
     Show diagnostic information about splint configuration:
       - Whether splint is enabled and on which events
-      - Which linters are configured for the current filetype
-      - Whether each linter's command is executable
-      - Whether config files are found (for linters that declare them)
-      - Which linter would be selected when `stop_after_first` is set
+      - All configured linters and whether their commands are found
+      - Each open buffer's resolved linters — command status, config files,
+        conditions, and `stop_after_first` selection
 
+                                                    *splint-display-config*
     To configure diagnostics per-linter, use Neovim's diagnostic namespace:
 
     ```lua
