@@ -418,10 +418,6 @@ local function do_lint(bufnr, names)
     ::continue::
   end
 
-  if stop_after_first and not next(running_procs) then
-    notify("No linter available: " .. table.concat(names, ", "), vim.log.levels.DEBUG)
-  end
-
   running_procs_by_buf[bufnr] = running_procs
 end
 
