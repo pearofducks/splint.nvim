@@ -30,6 +30,8 @@ jobs:
         with:
           luarocksVersion: "3.11.0"
 
+      - name: Install test dependencies
+        run: make deps
+
       - name: Run tests
-        run: |
-          luarocks test --local
+        run: make test
