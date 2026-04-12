@@ -57,7 +57,7 @@ describe('compiler', function()
     a.nvim_set_current_buf(bufnr)
     a.nvim_buf_set_option(bufnr, 'errorformat', '%f:%l: %m')
     a.nvim_buf_set_option(bufnr, 'makeprg', 'python %<')
-    local linter = require('splint').linters.compiler()
+    local linter = require('splint').available_linters.compiler()
     local expected = 'python bogus/path'
     assert.are.same(expected, linter.args[2])
   end)

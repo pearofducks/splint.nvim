@@ -53,13 +53,13 @@ describe('splint', function()
 
   describe('linting via :Splint', function()
     it('runs linters for matching filetype', function()
-      splint.linters.ft_echo = {
+      splint.available_linters.ft_echo = {
         name = "ft_echo",
         cmd = "echo",
         args = {},
         parser = tracking_parser("ft_echo"),
       }
-      splint.linters_by_ft = { testlang = { "ft_echo" } }
+      splint.linters = { testlang = { "ft_echo" } }
 
       make_buf('testlang')
       splint.enable()
@@ -68,13 +68,13 @@ describe('splint', function()
     end)
 
     it('runs a specific linter by name', function()
-      splint.linters.manual = {
+      splint.available_linters.manual = {
         name = "manual",
         cmd = "echo",
         args = {},
         parser = tracking_parser("manual"),
       }
-      splint.linters_by_ft = {}
+      splint.linters = {}
 
       make_buf('whatever')
       splint.enable()
@@ -82,19 +82,19 @@ describe('splint', function()
     end)
 
     it('resolves compound filetypes', function()
-      splint.linters.ans = {
+      splint.available_linters.ans = {
         name = "ans",
         cmd = "echo",
         args = {},
         parser = tracking_parser("ans"),
       }
-      splint.linters.yml = {
+      splint.available_linters.yml = {
         name = "yml",
         cmd = "echo",
         args = {},
         parser = tracking_parser("yml"),
       }
-      splint.linters_by_ft = {
+      splint.linters = {
         ansible = { "ans" },
         yaml = { "yml" },
       }
@@ -111,7 +111,7 @@ describe('splint', function()
       -- Simpler: just check the linter table was resolved by
       -- watching what the condition function sees.
       local ran = {}
-      splint.linters.first_ok = {
+      splint.available_linters.first_ok = {
         name = "first_ok",
         cmd = "echo",
         args = {},
@@ -121,7 +121,7 @@ describe('splint', function()
         end,
         parser = function() return {} end,
       }
-      splint.linters.second_ok = {
+      splint.available_linters.second_ok = {
         name = "second_ok",
         cmd = "echo",
         args = {},
@@ -131,7 +131,7 @@ describe('splint', function()
         end,
         parser = function() return {} end,
       }
-      splint.linters_by_ft = {
+      splint.linters = {
         saf1 = { "first_ok", "second_ok", stop_after_first = true },
       }
 
@@ -146,7 +146,7 @@ describe('splint', function()
 
     it('skips linter when config_files not found', function()
       local checked = {}
-      splint.linters.needs_config = {
+      splint.available_linters.needs_config = {
         name = "needs_config",
         cmd = "echo",
         args = {},
@@ -157,7 +157,7 @@ describe('splint', function()
         end,
         parser = function() return {} end,
       }
-      splint.linters.fallback = {
+      splint.available_linters.fallback = {
         name = "fallback",
         cmd = "echo",
         args = {},
@@ -167,7 +167,7 @@ describe('splint', function()
         end,
         parser = function() return {} end,
       }
-      splint.linters_by_ft = {
+      splint.linters = {
         saf3 = { "needs_config", "fallback", stop_after_first = true },
       }
 
@@ -182,7 +182,7 @@ describe('splint', function()
 
     it('skips linter when condition returns false', function()
       local reached_spawn = {}
-      splint.linters.cond_skip = {
+      splint.available_linters.cond_skip = {
         name = "cond_skip",
         cmd = "echo",
         args = {},
@@ -192,7 +192,7 @@ describe('splint', function()
           return {}
         end,
       }
-      splint.linters.cond_pass = {
+      splint.available_linters.cond_pass = {
         name = "cond_pass",
         cmd = "echo",
         args = {},
@@ -202,7 +202,7 @@ describe('splint', function()
           return {}
         end,
       }
-      splint.linters_by_ft = {
+      splint.linters = {
         saf4 = { "cond_skip", "cond_pass", stop_after_first = true },
       }
 
@@ -217,7 +217,7 @@ describe('splint', function()
 
     it('condition receives correct context', function()
       local captured_ctx
-      splint.linters.ctx_check = {
+      splint.available_linters.ctx_check = {
         name = "ctx_check",
         cmd = "echo",
         args = {},
@@ -227,7 +227,7 @@ describe('splint', function()
         end,
         parser = function() return {} end,
       }
-      splint.linters_by_ft = {
+      splint.linters = {
         saf5 = { "ctx_check", stop_after_first = true },
       }
 
@@ -245,7 +245,7 @@ describe('splint', function()
     it('does not check config_files or condition without stop_after_first', function()
       -- Even with failing config_files and condition, the linter should spawn
       -- when stop_after_first is not set.
-      splint.linters.always_run = {
+      splint.available_linters.always_run = {
         name = "always_run",
         cmd = "echo",
         args = {},
@@ -253,7 +253,7 @@ describe('splint', function()
         condition = function() return false end,
         parser = function() return {} end,
       }
-      splint.linters_by_ft = {
+      splint.linters = {
         saf6 = { "always_run" },
       }
 

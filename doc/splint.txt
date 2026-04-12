@@ -9,7 +9,7 @@ Parsers and parse functions ··························
 ==============================================================================
 Main splint.nvim API                                                  *splint*
 
-M.linters_by_ft                                          *splint.linters_by_ft*
+M.linters                                                    *splint.linters*
     A table listing which linters to run.
     The key is the filetype. The values are a list of linter names.
 
@@ -24,7 +24,7 @@ M.linters_by_ft                                          *splint.linters_by_ft*
     Example:
 
     ```lua
-    require("splint").linters_by_ft = {
+    require("splint").linters = {
       python = {"ruff", "mypy"},
       javascript = {"eslint", "oxlint", stop_after_first = true},
     }
@@ -34,7 +34,7 @@ M.linters_by_ft                                          *splint.linters_by_ft*
         (table<string,string[]>)
 
 
-M.linters                                                    *splint.linters*
+M.available_linters                                  *splint.available_linters*
     Table of linter definitions. Lazy-loads built-in linters.
 
     Type: ~
@@ -62,7 +62,7 @@ M.disable()                                                 *splint.disable*
                                                                *:Splint*
 :Splint [name]
     Run linters on the current buffer. Without arguments, runs the
-    linters configured in `linters_by_ft`. With an argument, runs the
+    linters configured in `linters`. With an argument, runs the
     named linter.
 
 

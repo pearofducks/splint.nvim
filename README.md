@@ -22,7 +22,7 @@ vim.pack.add({ 'pearofducks/splint.nvim' })
 ```lua
 local splint = require("splint")
 
-splint.linters_by_ft = {
+splint.linters = {
   markdown = { "vale" },
   python = { "ruff", "mypy" },
   javascript = { "eslint" },
@@ -47,7 +47,7 @@ To run a specific linter manually, use the `:Splint` command:
 ### Compound filetypes
 
 If a buffer has a compound filetype like `yaml.ghaction`, you can use either
-`ghaction`, `yaml`, or the full `yaml.ghaction` as key in `linters_by_ft`.
+`ghaction`, `yaml`, or the full `yaml.ghaction` as key in `linters`.
 
 
 ### Fallback / stop after first
@@ -56,7 +56,7 @@ When you have multiple alternative linters for a filetype, set
 `stop_after_first = true` to run only the first available one:
 
 ```lua
-require("splint").linters_by_ft = {
+require("splint").linters = {
   javascript = { "eslint", "oxlint", stop_after_first = true },
   python = { "ruff", "pylint", stop_after_first = true },
 }
@@ -274,11 +274,11 @@ Other dedicated linters that are built-in are:
 
 ## Custom Linters
 
-You can register custom linters by adding them to the `linters` table, but
+You can register custom linters by adding them to the `available_linters` table, but
 please consider contributing a linter if it is missing.
 
 ```lua
-require("splint").linters.your_linter_name = {
+require("splint").available_linters.your_linter_name = {
   cmd = "linter_cmd",
   stdin = true,
   args = {},
@@ -334,7 +334,7 @@ linter is configured for a project. You can override or extend them:
 
 ```lua
 -- Add a custom config file to an existing linter
-local eslint = require("splint").linters.eslint
+local eslint = require("splint").available_linters.eslint
 vim.list_extend(eslint.config_files, { ".my-eslintrc" })
 ```
 
@@ -346,7 +346,7 @@ function. It receives a context table with `bufnr`, `filename`, `dirname`,
 and `cwd`:
 
 ```lua
-require("splint").linters.eslint.condition = function(ctx)
+require("splint").available_linters.eslint.condition = function(ctx)
   return ctx.filename:match("_test%.js$") ~= nil
 end
 ```
@@ -359,7 +359,7 @@ end
 You can import a linter and modify its properties:
 
 ```lua
-local phpcs = require("splint").linters.phpcs
+local phpcs = require("splint").available_linters.phpcs
 phpcs.args = {
   "-q",
   "--report=json",
@@ -371,8 +371,8 @@ Some linters are defined as functions for lazy evaluation. In that case, wrap
 them:
 
 ```lua
-local original = require("splint").linters.terraform_validate
-require("splint").linters.terraform_validate = function()
+local original = require("splint").available_linters.terraform_validate
+require("splint").available_linters.terraform_validate = function()
   local linter = original()
   linter.cmd = "my_custom"
   return linter

@@ -2,7 +2,7 @@
 -- to which the file being linted belongs, falling back to a version
 -- accessible via `$PATH`. If a user wishes to use a different version
 -- of the script they can override "cmd" in their config:
--- require("splint").linters.checkpatch.cmd = '…/checkpatch.pl'
+-- require("splint").available_linters.checkpatch.cmd = '…/checkpatch.pl'
 
 local tool_name = 'checkpatch.pl'
 

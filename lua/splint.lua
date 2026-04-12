@@ -27,19 +27,19 @@ local augroup_name = "splint"
 ---  - It declares `condition` and it returns false
 ---
 ---```lua
----require("splint").linters_by_ft = {
+---require("splint").linters = {
 ---  python = {"ruff", "mypy"},
 ---  javascript = {"eslint", "oxlint", stop_after_first = true},
 ---}
 ---```
 ---
 ---@type table<string, string[]>
-M.linters_by_ft = {}
+M.linters = {}
 
 
 ---Table of linter definitions. Lazy-loads built-in linters from `splint.linters.*`.
 ---@type table<string, splint.Linter|fun():splint.Linter>
-M.linters = setmetatable({}, {
+M.available_linters = setmetatable({}, {
   __index = function(_, key)
     local ok, linter = pcall(require, "splint.linters." .. key)
     if ok then
@@ -321,13 +321,13 @@ end
 ---@return string[] names
 ---@return boolean stop_after_first
 local function resolve_linters(ft)
-  local names = M.linters_by_ft[ft]
+  local names = M.linters[ft]
   if names then
     return names, names.stop_after_first or false
   end
   local dedup = {}
   for _, sub in ipairs(vim.split(ft, ".", { plain = true })) do
-    local linters = M.linters_by_ft[sub]
+    local linters = M.linters[sub]
     if linters then
       for _, name in ipairs(linters) do
         dedup[name] = true
@@ -340,7 +340,7 @@ end
 ---@param name string
 ---@return splint.Linter|nil
 local function lookup_linter(name)
-  local linter = M.linters[name]
+  local linter = M.available_linters[name]
   if not linter then return nil end
   if type(linter) == "function" then
     linter = linter()

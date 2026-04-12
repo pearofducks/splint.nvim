@@ -24,12 +24,12 @@ function M.check()
     return
   end
 
-  local names = splint.linters_by_ft[ft]
+  local names = splint.linters[ft]
   if not names then
     -- Try compound filetype decomposition
     local dedup = {}
     for _, sub in ipairs(vim.split(ft, ".", { plain = true })) do
-      local sub_names = splint.linters_by_ft[sub]
+      local sub_names = splint.linters[sub]
       if sub_names then
         for _, name in ipairs(sub_names) do
           dedup[name] = true
@@ -53,7 +53,7 @@ function M.check()
   local selected = false
 
   for i, name in ipairs(names) do
-    local linter = splint.linters[name]
+    local linter = splint.available_linters[name]
     if not linter then
       h.error(name .. " — not found")
       goto continue
