@@ -216,8 +216,6 @@ function M.check()
   end
 
   -- Section 3: per-buffer report
-  h.start("splint: open buffers")
-
   local bufs = {}
   for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_loaded(bufnr) then
@@ -231,6 +229,7 @@ function M.check()
   end
 
   if #bufs == 0 then
+    h.start("splint: open buffers")
     h.info("no open buffers with a filetype")
     return
   end
@@ -246,10 +245,11 @@ function M.check()
       header = header .. " (stop_after_first)"
     end
 
+    h.start("splint: " .. header)
+
     if #names == 0 then
-      h.info(header .. " — no linters configured")
+      h.info("no linters configured")
     else
-      h.info(header)
       local ctx = build_ctx(buf.bufnr)
       local selected = false
       for _, name in ipairs(names) do
