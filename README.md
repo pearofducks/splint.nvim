@@ -146,10 +146,9 @@ parser = require("splint.parser").for_sarif(skeleton)
 
 `:checkhealth splint` reports:
 
-1. All configured linters and whether their commands are found
-2. Each open buffer's resolved linters -- command status, config files,
+1. Each open buffer's resolved linters -- command status, config files,
    conditions, and `stop_after_first` selection
-3. Recent stderr output from linters (when the linter's output stream is stdout)
+2. Recent stderr output from linters (when the linter's output stream is stdout)
 
 ## Display configuration
 
