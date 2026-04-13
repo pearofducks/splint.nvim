@@ -1,4 +1,3 @@
-local uv = vim.loop
 local api = vim.api
 local notify = vim.notify_once or vim.notify
 local M = {}
@@ -13,8 +12,6 @@ local namespaces = setmetatable({}, {
     return ns
   end,
 })
-
-local augroup_name = "splint"
 
 
 ---A table listing which linters to run via `try_lint`.
@@ -50,6 +47,11 @@ M.available_linters = setmetatable({}, {
 })
 
 
+---Last stderr output per linter, for diagnostics via `:checkhealth splint`.
+---@type table<string, string>
+M.last_stderr = {}
+
+
 ---@class splint.Linter
 ---@field name string
 ---@field cmd string|fun(ctx: splint.Context): string
@@ -78,45 +80,12 @@ M.available_linters = setmetatable({}, {
 
 ---@class splint.LintProc
 ---@field bufnr integer
----@field handle uv.uv_process_t
----@field stdout uv.uv_pipe_t
----@field stderr uv.uv_pipe_t
+---@field sys vim.SystemObj
 ---@field linter splint.Linter
 ---@field cwd string
 ---@field ns integer
 ---@field cancelled boolean
-
-
--- ---------------------------------------------------------------------------
--- Internal: LintProc
--- ---------------------------------------------------------------------------
-
-local LintProc = {}
-local linter_proc_mt = { __index = LintProc }
-
-function LintProc:publish(diagnostics)
-  if api.nvim_buf_is_valid(self.bufnr) and not self.cancelled then
-    vim.diagnostic.set(self.ns, self.bufnr, diagnostics)
-  end
-  self.stdout:shutdown()
-  self.stdout:close()
-  self.stderr:shutdown()
-  self.stderr:close()
-end
-
-function LintProc:cancel()
-  self.cancelled = true
-  local handle = self.handle
-  if not handle or handle:is_closing() then
-    return
-  end
-  handle:kill("sigint")
-  vim.defer_fn(function()
-    if not handle:is_closing() then
-      handle:kill("sigkill")
-    end
-  end, 2000)
-end
+---@field cancel fun(self: splint.LintProc)
 
 
 -- ---------------------------------------------------------------------------
@@ -183,27 +152,6 @@ local function read_output(cwd, bufnr, parser, publish_fn)
 end
 
 
-function LintProc:start_read()
-  local self_ = self
-  local publish = function(diagnostics) self_:publish(diagnostics) end
-  local parser = self.linter.parser
-  if type(parser) == "function" then
-    parser = accumulate_chunks(parser)
-  end
-  local stream = self.linter.stream
-  local cwd, bufnr = self.cwd, self.bufnr
-  if not stream or stream == "stdout" then
-    self.stdout:read_start(read_output(cwd, bufnr, parser, publish))
-  elseif stream == "stderr" then
-    self.stderr:read_start(read_output(cwd, bufnr, parser, publish))
-  elseif stream == "both" then
-    local p1, p2 = split_parser(parser)
-    self.stdout:read_start(read_output(cwd, bufnr, p1, publish))
-    self.stderr:read_start(read_output(cwd, bufnr, p2, publish))
-  end
-end
-
-
 -- ---------------------------------------------------------------------------
 -- Internal: spawn
 -- ---------------------------------------------------------------------------
@@ -217,97 +165,117 @@ end
 
 ---@param linter splint.Linter
 ---@param ctx splint.Context
+---@param cwd string
 ---@param ignore_errors? boolean
 ---@return splint.LintProc|nil
-local function spawn(linter, ctx, ignore_errors)
-  local stdin = assert(uv.new_pipe(false))
-  local stdout = assert(uv.new_pipe(false))
-  local stderr = assert(uv.new_pipe(false))
+local function spawn(linter, ctx, cwd, ignore_errors)
   local bufnr = ctx.bufnr
-  local cwd = ctx.cwd
-
-  local args = {}
-  if linter.args then
-    for _, a in ipairs(linter.args) do
-      table.insert(args, eval(a, ctx))
-    end
-  end
-  if not linter.stdin and linter.append_fname ~= false then
-    table.insert(args, ctx.filename)
-  end
-
-  local env
-  if linter.env then
-    env = {}
-    if not linter.env["PATH"] then
-      table.insert(env, "PATH=" .. os.getenv("PATH"))
-    end
-    for k, v in pairs(linter.env) do
-      table.insert(env, k .. "=" .. v)
-    end
-  end
+  local ns = namespaces[linter.name]
 
   local cmd = eval(linter.cmd, ctx)
   assert(cmd, "Linter definition must have a `cmd` set: " .. vim.inspect(linter))
 
-  local handle, pid_or_err = uv.spawn(cmd, {
-    args = args,
-    stdio = { stdin, stdout, stderr },
-    env = env,
-    cwd = cwd,
-    detached = true,
-  }, function(code)
-    if handle and not handle:is_closing() then
+  local args = {}
+  if linter.args then
+    for _, a in ipairs(linter.args) do
+      args[#args + 1] = eval(a, ctx)
+    end
+  end
+  if not linter.stdin and linter.append_fname ~= false then
+    args[#args + 1] = ctx.filename
+  end
+
+  -- Parser + publish
+  local parser = linter.parser
+  if type(parser) == "function" then
+    parser = accumulate_chunks(parser)
+  end
+  local cancelled = false
+  local function publish(diagnostics)
+    if api.nvim_buf_is_valid(bufnr) and not cancelled then
+      vim.diagnostic.set(ns, bufnr, diagnostics)
+    end
+  end
+
+  -- Stream routing
+  local stream = linter.stream or "stdout"
+  local stdout_cb, stderr_cb
+
+  if stream == "stdout" then
+    stdout_cb = read_output(cwd, bufnr, parser, publish)
+    -- capture stderr for healthcheck diagnostics
+    M.last_stderr[linter.name] = nil
+    stderr_cb = function(_, data)
+      if data then
+        M.last_stderr[linter.name] = (M.last_stderr[linter.name] or "") .. data
+      end
+    end
+  elseif stream == "stderr" then
+    stderr_cb = read_output(cwd, bufnr, parser, publish)
+  elseif stream == "both" then
+    local p1, p2 = split_parser(parser)
+    stdout_cb = read_output(cwd, bufnr, p1, publish)
+    stderr_cb = read_output(cwd, bufnr, p2, publish)
+  end
+
+  -- Stdin content
+  local stdin_data = nil
+  if linter.stdin then
+    local lines = api.nvim_buf_get_lines(bufnr, 0, -1, true)
+    stdin_data = table.concat(lines, "\n") .. "\n"
+  end
+
+  local full_cmd = vim.list_extend({ cmd }, args)
+  local sys_obj
+  local ok, err = pcall(function()
+    sys_obj = vim.system(full_cmd, {
+      stdin = stdin_data,
+      stdout = stdout_cb,
+      stderr = stderr_cb,
+      cwd = cwd,
+      env = linter.env,
+      detach = true,
+    }, function(result)
       local procs = running_procs_by_buf[bufnr] or {}
-      local proc = procs[linter.name] or {}
-      if handle == proc.handle then
+      local proc = procs[linter.name]
+      if proc and proc.sys == sys_obj then
         procs[linter.name] = nil
         if not next(procs) then
           running_procs_by_buf[bufnr] = nil
         end
       end
-      handle:close()
-    end
-    if code ~= 0 and linter.ignore_exitcode == false then
-      vim.schedule(function()
-        vim.notify("Linter `" .. cmd .. "` exited with code: " .. code, vim.log.levels.WARN)
-      end)
-    end
+      if result.code ~= 0 and linter.ignore_exitcode == false then
+        vim.schedule(function()
+          vim.notify("Linter `" .. cmd .. "` exited with code: " .. result.code, vim.log.levels.WARN)
+        end)
+      end
+    end)
   end)
 
-  if not handle then
-    stdout:close()
-    stderr:close()
-    stdin:close()
+  if not ok then
     if not ignore_errors then
-      vim.notify("Error running " .. cmd .. ": " .. pid_or_err, vim.log.levels.ERROR)
+      vim.notify("Error running " .. cmd .. ": " .. tostring(err), vim.log.levels.ERROR)
     end
     return nil
   end
 
-  local proc = setmetatable({
+  ---@type splint.LintProc
+  local proc = {
     bufnr = bufnr,
-    stdout = stdout,
-    stderr = stderr,
-    handle = handle,
+    sys = sys_obj,
     linter = linter,
     cwd = cwd,
-    ns = namespaces[linter.name],
+    ns = ns,
     cancelled = false,
-  }, linter_proc_mt)
-  proc:start_read()
-
-  if linter.stdin then
-    local lines = api.nvim_buf_get_lines(bufnr, 0, -1, true)
-    local content = table.concat(lines, "\n") .. "\n"
-    stdin:write(content, function()
-      stdin:shutdown(function()
-        stdin:close()
-      end)
-    end)
-  else
-    stdin:close()
-  end
+    cancel = function(self)
+      self.cancelled = true
+      cancelled = true
+      self.sys:kill("sigint")
+      vim.defer_fn(function()
+        pcall(function() self.sys:kill("sigkill") end)
+      end, 2000)
+    end,
+  }
 
   return proc
 end
@@ -364,12 +332,46 @@ end
 
 
 -- ---------------------------------------------------------------------------
+-- Internal: linter selection
+-- ---------------------------------------------------------------------------
+
+---@param names string[]
+---@param ctx splint.Context
+---@param stop_after_first boolean
+---@return {linter: splint.Linter, cwd: string}[]
+local function select_linters(names, ctx, stop_after_first)
+  local selected = {}
+  for _, name in ipairs(names) do
+    local linter = lookup_linter(name)
+    if not linter then
+      if not stop_after_first then
+        notify("Linter `" .. name .. "` not found", vim.log.levels.WARN)
+      end
+    elseif stop_after_first and linter.config_files
+      and #vim.fs.find(linter.config_files, { path = ctx.dirname, upward = true }) == 0 then
+      -- skip: no config file found
+    elseif stop_after_first and linter.condition and not linter.condition(ctx) then
+      -- skip: condition not met
+    else
+      table.insert(selected, {
+        linter = linter,
+        cwd = linter.cwd or ctx.cwd,
+      })
+      if stop_after_first then break end
+    end
+  end
+  return selected
+end
+
+
+-- ---------------------------------------------------------------------------
 -- Internal: core lint loop
 -- ---------------------------------------------------------------------------
 
----@param bufnr integer
+---@param bufnr_or_ev integer|table
 ---@param names? string[]
-local function do_lint(bufnr, names)
+function M.lint(bufnr_or_ev, names)
+  local bufnr = type(bufnr_or_ev) == "table" and bufnr_or_ev.buf or bufnr_or_ev
   local stop_after_first = false
   if not names then
     local ft = vim.bo[bufnr].filetype
@@ -378,44 +380,22 @@ local function do_lint(bufnr, names)
   if #names == 0 then return end
 
   local ctx = build_ctx(bufnr)
+  local candidates = select_linters(names, ctx, stop_after_first)
   local running_procs = running_procs_by_buf[bufnr] or {}
 
-  for _, name in ipairs(names) do
-    local linter = lookup_linter(name)
-    if not linter then
-      if not stop_after_first then
-        notify("Linter `" .. name .. "` not found", vim.log.levels.WARN)
-      end
-      goto continue
-    end
-
-    if stop_after_first then
-      if linter.config_files then
-        if #vim.fs.find(linter.config_files, { path = ctx.dirname, upward = true }) == 0 then
-          goto continue
-        end
-      end
-      if linter.condition and not linter.condition(ctx) then
-        goto continue
-      end
-    end
-
-    -- Use linter.cwd if set, otherwise the editor's cwd
-    ctx.cwd = linter.cwd or ctx.cwd
+  for _, candidate in ipairs(candidates) do
+    local linter = candidate.linter
 
     local proc = running_procs[linter.name]
     if proc then proc:cancel() end
     running_procs[linter.name] = nil
 
-    local ok, result = pcall(spawn, linter, ctx, stop_after_first)
+    local ok, result = pcall(spawn, linter, ctx, candidate.cwd, stop_after_first)
     if ok and result then
       running_procs[linter.name] = result
-      if stop_after_first then break end
     elseif not ok and not stop_after_first then
       notify(result --[[@as string]], vim.log.levels.WARN)
     end
-
-    ::continue::
   end
 
   running_procs_by_buf[bufnr] = running_procs
@@ -423,49 +403,30 @@ end
 
 
 -- ---------------------------------------------------------------------------
--- Public API
+-- User command
 -- ---------------------------------------------------------------------------
 
---- Start linting. Creates autocommands that run configured linters
---- automatically, and a `:Splint` command for manual use.
----
----```lua
----require("splint").enable()
----
------ or with custom events:
----require("splint").enable({ events = { "BufWritePost", "InsertLeave" } })
----```
----
----@param opts? { events?: string[] }
-function M.enable(opts)
-  opts = opts or {}
-  local events = opts.events or { "BufWritePost", "BufReadPost" }
-  local group = api.nvim_create_augroup(augroup_name, { clear = true })
-
-  api.nvim_create_autocmd(events, {
-    group = group,
-    callback = function(ev)
-      do_lint(ev.buf)
-    end,
-  })
-
-  api.nvim_create_user_command("Splint", function(cmd_opts)
-    local bufnr = api.nvim_get_current_buf()
-    if cmd_opts.args ~= "" then
-      do_lint(bufnr, vim.split(cmd_opts.args, "%s+"))
-    else
-      do_lint(bufnr)
+local function complete_linters()
+  local seen = {}
+  for _, names in pairs(M.linters) do
+    for _, name in ipairs(names) do
+      seen[name] = true
     end
-  end, {
-    nargs = "?",
-    desc = "Run linters on the current buffer",
-  })
+  end
+  return vim.tbl_keys(seen)
 end
 
---- Stop linting. Removes autocommands and the `:Splint` command.
-function M.disable()
-  pcall(api.nvim_del_augroup_by_name, augroup_name)
-  pcall(api.nvim_del_user_command, "Splint")
-end
+api.nvim_create_user_command("Splint", function(cmd_opts)
+  local bufnr = api.nvim_get_current_buf()
+  if cmd_opts.args ~= "" then
+    M.lint(bufnr, vim.split(cmd_opts.args, "%s+")) -- split on whitespace
+  else
+    M.lint(bufnr)
+  end
+end, {
+  nargs = "?",
+  desc = "Run linters on the current buffer",
+  complete = complete_linters,
+})
 
 return M

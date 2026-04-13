@@ -15,21 +15,38 @@ splint.linters = {
   javascript = { "eslint" },
 }
 
-splint.enable()
+vim.api.nvim_create_autocmd({ "BufWritePost", "BufReadPost" }, {
+  callback = splint.lint,
+})
 ```
 
 ## API
 
-`enable()` creates autocommands on `BufWritePost` and `BufReadPost`. Pass custom events as needed:
+### `splint.lint(bufnr_or_ev, names?)`
+
+Run linters on a buffer. Accepts a buffer number or an autocmd event table
+(uses `ev.buf`). When `names` is omitted, linters are resolved from the
+buffer's filetype via `splint.linters`.
 
 ```lua
-splint.enable({ events = { "BufWritePost", "BufReadPost", "InsertLeave", "TextChanged" } })
+-- As an autocmd callback (receives the event table directly)
+vim.api.nvim_create_autocmd({ "BufWritePost", "BufReadPost" }, {
+  callback = splint.lint,
+})
+
+-- Programmatic use
+splint.lint(bufnr)
+splint.lint(bufnr, { "eslint", "ruff" })
 ```
 
-To run a specific linter manually:
+### `:Splint [linter]`
+
+User command registered when the module is loaded. Tab-completes configured
+linter names.
 
 ```
-:Splint cspell
+:Splint          " run linters for current filetype
+:Splint cspell   " run a specific linter
 ```
 
 ### Compound filetypes
@@ -129,10 +146,10 @@ parser = require("splint.parser").for_sarif(skeleton)
 
 `:checkhealth splint` reports:
 
-1. Whether splint is enabled and on which events
-2. All configured linters and whether their commands are found
-3. Each open buffer's resolved linters -- command status, config files,
+1. All configured linters and whether their commands are found
+2. Each open buffer's resolved linters -- command status, config files,
    conditions, and `stop_after_first` selection
+3. Recent stderr output from linters (when the linter's output stream is stdout)
 
 ## Display configuration
 

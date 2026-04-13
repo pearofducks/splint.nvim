@@ -22,35 +22,6 @@ describe('splint', function()
     spawned = {}
   end)
 
-  after_each(function()
-    splint.disable()
-  end)
-
-  describe('enable / disable', function()
-    it('creates and removes the augroup', function()
-      splint.enable()
-      local ok = pcall(a.nvim_get_autocmds, { group = "splint" })
-      assert.is_true(ok)
-
-      splint.disable()
-      ok = pcall(a.nvim_get_autocmds, { group = "splint" })
-      assert.is_false(ok)
-    end)
-
-    it('creates the :Splint command', function()
-      splint.enable()
-      local cmds = a.nvim_get_commands({})
-      assert.is_not_nil(cmds["Splint"])
-    end)
-
-    it('removes the :Splint command on disable', function()
-      splint.enable()
-      splint.disable()
-      local cmds = a.nvim_get_commands({})
-      assert.is_nil(cmds["Splint"])
-    end)
-  end)
-
   describe('linting via :Splint', function()
     it('runs linters for matching filetype', function()
       splint.available_linters.ft_echo = {
@@ -62,7 +33,6 @@ describe('splint', function()
       splint.linters = { testlang = { "ft_echo" } }
 
       make_buf('testlang')
-      splint.enable()
       vim.cmd("Splint")
       -- Spawned without error = success (parser runs async)
     end)
@@ -77,7 +47,6 @@ describe('splint', function()
       splint.linters = {}
 
       make_buf('whatever')
-      splint.enable()
       vim.cmd("Splint manual")
     end)
 
@@ -100,7 +69,6 @@ describe('splint', function()
       }
 
       make_buf('ansible.yaml')
-      splint.enable()
       vim.cmd("Splint")
     end)
   end)
@@ -136,7 +104,6 @@ describe('splint', function()
       }
 
       make_buf('saf1')
-      splint.enable()
       vim.cmd("Splint")
 
       -- first_ok's condition was checked and returned true, so it was selected.
@@ -172,7 +139,6 @@ describe('splint', function()
       }
 
       make_buf('saf3')
-      splint.enable()
       vim.cmd("Splint")
 
       -- needs_config was skipped (config_files check happens before condition),
@@ -207,7 +173,6 @@ describe('splint', function()
       }
 
       make_buf('saf4')
-      splint.enable()
       vim.cmd("Splint")
       -- cond_skip should not have been spawned
       -- We can't easily check async parser calls synchronously,
@@ -232,7 +197,6 @@ describe('splint', function()
       }
 
       local bufnr = make_buf('saf5')
-      splint.enable()
       vim.cmd("Splint")
 
       assert.is_not_nil(captured_ctx)
@@ -258,7 +222,6 @@ describe('splint', function()
       }
 
       make_buf('saf6')
-      splint.enable()
       -- Should not error — the linter spawns despite failing checks
       vim.cmd("Splint")
     end)

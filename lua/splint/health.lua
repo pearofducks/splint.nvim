@@ -176,21 +176,7 @@ local function report_linter(name, ctx, stop_after_first, selected)
 end
 
 function M.check()
-  -- Section 1: enabled status
-  h.start("splint")
-
-  local ok, aus = pcall(vim.api.nvim_get_autocmds, { group = "splint" })
-  if not ok or #aus == 0 then
-    h.warn("splint is not enabled. Call `require('splint').enable()`")
-  else
-    local events = {}
-    for _, au in ipairs(aus) do
-      events[au.event] = true
-    end
-    h.ok("enabled (events: " .. table.concat(vim.tbl_keys(events), ", ") .. ")")
-  end
-
-  -- Section 2: all configured linters overview
+  -- Section 1: all configured linters overview
   h.start("splint: configured linters")
 
   local name_to_fts, sorted_names = collect_all_linters()
@@ -257,6 +243,15 @@ function M.check()
           selected = report_linter(name, ctx, stop_after_first, selected)
         end
       end
+    end
+  end
+
+  -- Section: last stderr output from linters
+  local splint = require("splint")
+  if next(splint.last_stderr) then
+    h.start("splint: recent stderr")
+    for name, output in pairs(splint.last_stderr) do
+      h.warn(name .. ":\n" .. output)
     end
   end
 end

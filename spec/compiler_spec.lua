@@ -14,8 +14,7 @@ describe('compiler', function()
     a.nvim_buf_set_option(bufnr, 'errorformat', '%f:%l: %m')
     a.nvim_buf_set_option(bufnr, 'makeprg', 'python3 spec/both.py')
 
-    local splint = require('splint')
-    splint.enable()
+    require('splint')
     local handles = get_num_handles()
     vim.cmd('Splint compiler')
 
