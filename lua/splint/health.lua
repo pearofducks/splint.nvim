@@ -39,30 +39,6 @@ local function resolve_linter(name)
   return linter, nil
 end
 
---- Collect all unique linter names across all configured filetypes,
---- mapped back to which filetypes reference them.
----@return table<string, string[]> name_to_filetypes
----@return string[] sorted_names
-local function collect_all_linters()
-  local splint = require("splint")
-  local name_to_fts = {}
-  for ft, names in pairs(splint.linters) do
-    for _, name in ipairs(names) do
-      if type(name) == "string" then
-        if not name_to_fts[name] then
-          name_to_fts[name] = {}
-        end
-        table.insert(name_to_fts[name], ft)
-      end
-    end
-  end
-  local sorted = vim.tbl_keys(name_to_fts)
-  table.sort(sorted)
-  for _, fts in pairs(name_to_fts) do
-    table.sort(fts)
-  end
-  return name_to_fts, sorted
-end
 
 --- Resolve linter names for a filetype, handling compound filetypes.
 ---@param ft string
@@ -176,32 +152,7 @@ local function report_linter(name, ctx, stop_after_first, selected)
 end
 
 function M.check()
-  -- Section 1: all configured linters overview
-  h.start("splint: configured linters")
-
-  local name_to_fts, sorted_names = collect_all_linters()
-  if #sorted_names == 0 then
-    h.info("no linters configured — set `require('splint').linters`")
-  else
-    for _, name in ipairs(sorted_names) do
-      local fts = name_to_fts[name]
-      local linter, err = resolve_linter(name)
-      if not linter then
-        h.error(name .. " — " .. err .. " (filetypes: " .. table.concat(fts, ", ") .. ")")
-      else
-        local cmd = resolve_cmd(linter, name)
-        local executable = cmd and vim.fn.executable(cmd) == 1
-        local ft_str = table.concat(fts, ", ")
-        if executable then
-          h.ok(name .. " — `" .. cmd .. "` (" .. ft_str .. ")")
-        else
-          h.warn(name .. " — `" .. tostring(cmd) .. "` not found (" .. ft_str .. ")")
-        end
-      end
-    end
-  end
-
-  -- Section 3: per-buffer report
+  -- Per-buffer report
   local bufs = {}
   for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_loaded(bufnr) then
